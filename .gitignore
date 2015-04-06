@@ -13,3 +13,5 @@ hs_err_pid*
 
 distributedfilesharing.iml
 .idea
+out
+src/temp
