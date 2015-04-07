@@ -6,10 +6,18 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.security.MessageDigest;
 import java.util.*;
+import java.util.concurrent.Semaphore;
 
 public class Agent implements Runnable, Observer{
 
-    private void showMenu(){
+    Semaphore sem;
+
+    public Agent(Semaphore s){
+        this.sem = s;
+    }
+
+    private void showMenu() throws Exception{
+        this.sem.acquire();
         Scanner sc = new Scanner(System.in);
         System.out.println("Actions - ");
         System.out.println("1. Issue a query");
@@ -19,6 +27,7 @@ public class Agent implements Runnable, Observer{
         System.out.println("6. Leave network\n");
         System.out.println("Select action: ");
         int option = sc.nextInt();
+        this.sem.release();
 
         switch (option){
             case 1:
@@ -47,6 +56,7 @@ public class Agent implements Runnable, Observer{
 
     private void addFile(String fileName){
         String[] keywords = fileName.split(" ");
+        fileName = fileName.replace(" ", "_");  //replace spaces with underscore
         HashSet<String> keyset = new HashSet<String>();
         for (int i = 0; i < keywords.length; i++) {
             keyset.add(keywords[i]);
@@ -65,8 +75,9 @@ public class Agent implements Runnable, Observer{
             System.out.println("------------------------------------------------\n");
         }
         else{
-            System.out.println("No files !\n");
+            System.out.println("No files !");
         }
+        (new Scanner(System.in)).nextLine();
     }
 
     private void listNeighbours(){
@@ -80,8 +91,9 @@ public class Agent implements Runnable, Observer{
             System.out.println("------------------------------------------------\n");
         }
         else{
-            System.out.println("No connections !\n");
+            System.out.println("No connections !");
         }
+        (new Scanner(System.in)).nextLine();
     }
 
     private void unregister(){
@@ -109,6 +121,7 @@ public class Agent implements Runnable, Observer{
 
     public void searchFile(String fileName){
         try{
+            fileName = fileName.replace(" ", "_");
             DatagramSocket clientSocket = new DatagramSocket();
             InetAddress nIPAddress = InetAddress.getByName(Cache.NODE_IP);
             String myHash = getNodeHash();
@@ -129,12 +142,24 @@ public class Agent implements Runnable, Observer{
     @Override
     public void run() {
         while(true){
-            showMenu();
+            try{
+                showMenu();
+            }
+            catch (Exception ex){
+                ex.printStackTrace();
+            }
         }
     }
 
     @Override
     public void update(Observable observable, Object o) {
-
+        while(true){
+            try{
+                showMenu();
+            }
+            catch (Exception ex){
+                ex.printStackTrace();
+            }
+        }
     }
 }

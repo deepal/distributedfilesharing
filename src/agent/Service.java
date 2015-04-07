@@ -7,107 +7,82 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.*;
+import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 
 
-public class Service implements Runnable {
+public class Service extends Observable implements Runnable {
 
-    public Semaphore printLock = new Semaphore(1);
+    Semaphore sem;
 
-    private void join() throws IOException {
+    public Service(Semaphore s){
+        this.sem = s;
+    }
+
+    private void join() throws Exception {
         DatagramSocket clientSocket = new DatagramSocket();
         Iterator it = Cache.neighbours.entrySet().iterator();
         while (it.hasNext()) {
-
             Map.Entry<String, Integer> neighbour = (Map.Entry<String, Integer>) it.next();
             String nIP = neighbour.getKey();
             InetAddress nIPAddress = InetAddress.getByName(nIP);
             int nPort = neighbour.getValue();
-
             byte[] sendData = new byte[1024];
             String command = "JOIN " + Cache.NODE_IP + " " + Cache.NODE_PORT + " " + Cache.HOP_COUNT;
             String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
+
             sendData = sendCommand.getBytes();
             DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress, nPort);
             clientSocket.send(sendPacket);
-
         }
 
         clientSocket.close();
     }
 
-    private void register() throws IOException {
+    private String getJoinHash(String cmd) throws Exception{
+        String date = "" + ((new Date()).getTime());
+        String hashMe = cmd + date + Cache.NODE_IP + Cache.NODE_PORT + Cache.NODE_USER;
+        byte[] bytesOfMessage = hashMe.getBytes("UTF-8");
+        MessageDigest md = MessageDigest.getInstance("MD5");
+        byte[] thedigest = md.digest(bytesOfMessage);
+
+        StringBuffer hashBuf = new StringBuffer();
+
+        for (int i = 0; i < thedigest.length; i++) {
+            hashBuf.append(thedigest[i]);
+        }
+        return hashBuf.toString();
+    }
+
+    private void udpRegister() throws Exception{
+        DatagramSocket clientSocket = new DatagramSocket();
         String command = "REG " + Cache.NODE_IP + " " + Cache.NODE_PORT + " " + Cache.NODE_USER;
         String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
+        byte[] sendData = sendCommand.getBytes();
+        DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(Cache.BSIP), Cache.BSPORT);
+        clientSocket.send(sendPacket);
+    }
 
-        Socket clientSocket = new Socket(Cache.BSIP, Cache.BSPORT);
-        DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
-        BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-        outToServer.writeBytes(sendCommand);
-        String response = inFromServer.readLine();
-        clientSocket.close();
+    private void register() throws Exception {
+//        String command = "REG " + Cache.NODE_IP + " " + Cache.NODE_PORT + " " + Cache.NODE_USER;
+//        String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
+//
+//        Socket clientSocket = new Socket(Cache.BSIP, Cache.BSPORT);
+//        DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
+//        BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+//        outToServer.writeBytes(sendCommand);
+//        String response = inFromServer.readLine();
+//        clientSocket.close();
 
-        StringTokenizer st = new StringTokenizer(response, " ");
+        udpRegister();
 
-        int resLength = Integer.parseInt(st.nextToken());
-        String resStatus = st.nextToken();
 
-        if (resLength > 0 && resStatus.equals("REGOK")) {
-            int resCode = Integer.parseInt(st.nextToken());
-            boolean registrationSuccessful = false;
-            switch (resCode) {
-                case 9999:
-                    System.out.println("Failed! There is some error in the command!");
-                    System.exit(0);
-                    break;
-                case 9998:
-                    System.out.println("Failed! You are already registered. Unregister first.");
-                    System.exit(0);
-                    break;
-                case 9997:
-                    System.out.println("Failed! Another user registered with same IP/Port. Try a different IP/Port.");
-                    System.exit(0);
-                    break;
-                case 9996:
-                    System.out.println("Bootstrap server is full. Try later.");
-                    System.exit(0);
-                    break;
-                case 0:
-                    registrationSuccessful = true;
-                    break;
-                case 1:
-                    String neighbourIP = st.nextToken();
-                    int neightbourPort = Integer.parseInt(st.nextToken());
-                    Cache.neighbours.put(neighbourIP, new Integer(neightbourPort));
-                    registrationSuccessful = true;
-                    break;
-                default:
-                    if (resCode > 1) {
-                        if (resCode > 1) {
-                            Cache.neighbours.put(st.nextToken(), new Integer(st.nextToken()));
-                            Cache.neighbours.put(st.nextToken(), new Integer(st.nextToken()));
-                            registrationSuccessful = true;
-                        }
-                    } else {
-                        System.out.println("Unknown response from bootstrap server !");
-                    }
-            }
-            if (!registrationSuccessful) {
-                System.exit(0);
-            }
-        } else if (resLength == 0) {
-            System.out.println("Empty response from bootstrap server. Exiting ..");
-            System.exit(0);
-        } else {
-            System.out.println("Didn't get REGOK!");
-            System.exit(0);
-        }
     }
 
     private FileSearchResponse searchFileLocally(String fileName) {
 
-        String[] searchKeywords = fileName.split(" ");
+        String[] searchKeywords = fileName.split("_");
         HashSet<String> searchKeySet = new HashSet<String>();
         for (int i = 0; i < searchKeywords.length; i++) {
             searchKeySet.add(searchKeywords[i]);
@@ -137,7 +112,6 @@ public class Service implements Runnable {
     }
 
     private void forwardJoinRequest(String joinRequest) throws IOException {
-        //TODO: need to add TTL and caching new comers
 
         String[] tokens = joinRequest.split(" ");
         int length = Integer.parseInt(tokens[0]);
@@ -173,7 +147,7 @@ public class Service implements Runnable {
 
     }
 
-    private void processQuery(String[] tokens) throws IOException {
+    private void processQuery(String[] tokens) throws Exception {
 
         int queryLength = Integer.parseInt(tokens[0]);
 
@@ -191,7 +165,8 @@ public class Service implements Runnable {
                 ttl -= 1;
                 DatagramSocket clientSocket = new DatagramSocket();
 
-                ArrayList<String> neighbourIPs = (ArrayList<String>) (Cache.neighbours.keySet());
+                ArrayList<String> neighbourIPs = new ArrayList<String>();
+                neighbourIPs.addAll(Cache.neighbours.keySet());
 
                 String randomNeighbourIP = null;
                 int randomNeighbourPort = 0;
@@ -217,12 +192,14 @@ public class Service implements Runnable {
 
             } else if (searchResponse.filePaths != null) {
                 if (sourceIP.equals(Cache.NODE_IP)) {
+                    sem.acquire();
                     System.out.println("------------------------------------------");
                     System.out.println("Search results from my files: ");
                     for (int i = 0; i < searchResponse.filePaths.size(); i++) {
                         System.out.println((i + 1) + ". " + searchResponse.filePaths.get(i));
                     }
                     System.out.println("------------------------------------------");
+                    sem.release();
                 } else {
                     DatagramSocket clientSocket = new DatagramSocket();
                     InetAddress sourceIPAddress = InetAddress.getByName(sourceIP);
@@ -250,7 +227,8 @@ public class Service implements Runnable {
         }
     }
 
-    public synchronized void printSearchOutput(String[] tokens) {
+    public synchronized void printSearchOutput(String[] tokens) throws Exception{
+        this.sem.acquire();
         int respLength = Integer.parseInt(tokens[0]);
         if (respLength > 0) {
             //String respMsg = tokens[1];
@@ -274,6 +252,7 @@ public class Service implements Runnable {
                 }
             }
         }
+        this.sem.release();
     }
 
     @Override
@@ -312,6 +291,63 @@ public class Service implements Runnable {
                         printSearchOutput(tokens); // print the search results
                     } else if (command.equals("JOIN")) {
                         forwardJoinRequest(request);    //forward the join request to a random neighbour
+                    }
+                    else if(command.equals("JOINOK")){
+
+                    }
+                    else if(command.equals("REGOK")){
+                        int resLength = Integer.parseInt(tokens[0]);
+                        String resStatus = tokens[1];
+                        if (resLength > 0 && resStatus.equals("REGOK")) {
+                            int resCode = Integer.parseInt(tokens[2]);
+                            boolean registrationSuccessful = false;
+                            switch (resCode) {
+                                case 9999:
+                                    System.out.println("Failed! There is some error in the command!");
+                                    System.exit(0);
+                                    break;
+                                case 9998:
+                                    System.out.println("Failed! You are already registered. Unregister first.");
+                                    System.exit(0);
+                                    break;
+                                case 9997:
+                                    System.out.println("Failed! Another user registered with same IP/Port. Try a different IP/Port.");
+                                    System.exit(0);
+                                    break;
+                                case 9996:
+                                    System.out.println("Bootstrap server is full. Try later.");
+                                    System.exit(0);
+                                    break;
+                                case 0:
+                                    registrationSuccessful = true;
+                                    break;
+                                case 1:
+                                    String neighbourIP = tokens[3];
+                                    int neightbourPort = Integer.parseInt(tokens[4]);
+                                    Cache.neighbours.put(neighbourIP, new Integer(neightbourPort));
+                                    registrationSuccessful = true;
+                                    break;
+                                default:
+                                    if (resCode > 1) {
+                                        if (resCode > 1) {
+                                            Cache.neighbours.put(tokens[3], Integer.parseInt(tokens[4]));
+                                            Cache.neighbours.put(tokens[5], Integer.parseInt(tokens[6]));
+                                            registrationSuccessful = true;
+                                        }
+                                    } else {
+                                        System.out.println("Unknown response from bootstrap server !");
+                                    }
+                            }
+                            if (!registrationSuccessful) {
+                                System.exit(0);
+                            }
+                        } else if (resLength == 0) {
+                            System.out.println("Empty response from bootstrap server. Exiting ..");
+                            System.exit(0);
+                        } else {
+                            System.out.println("Didn't get REGOK!");
+                            System.exit(0);
+                        }
                     }
                 }
 

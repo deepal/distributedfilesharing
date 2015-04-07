@@ -3,6 +3,7 @@ package agent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.concurrent.Semaphore;
 
 /**
  * Created by deepal on 3/4/15.
@@ -12,13 +13,15 @@ public class Starter {
 
     public Starter(){
 
+        Semaphore printSem = new Semaphore(1);
+
         Cache.myFiles = new HashMap<String, HashSet<String>>();
         Cache.neighbours = new HashMap<String, Integer>();
         Cache.fileCache = new HashMap<String, HashSet<String>>();
         Cache.queryCache = new HashMap<String, String>();
 
-        Service agentService = new Service();
-        Agent agentClient = new Agent();
+        Service agentService = new Service(printSem);
+        Agent agentClient = new Agent(printSem);
 
         Thread serviceThread = new Thread(agentService);
         Thread clientThread = new Thread(agentClient);
