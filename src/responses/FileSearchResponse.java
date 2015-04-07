@@ -10,10 +10,11 @@ public class FileSearchResponse {
     public ArrayList<String> filePaths;
     public ArrayList<String> cachedLocations;
 
-    public FileSearchResponse(){}
+    public FileSearchResponse() {
+    }
 
 
-    public FileSearchResponse(ArrayList<String> filePaths, ArrayList<String> cachedLocations){
+    public FileSearchResponse(ArrayList<String> filePaths, ArrayList<String> cachedLocations) {
         this.filePaths = filePaths;
         this.cachedLocations = cachedLocations;
     }

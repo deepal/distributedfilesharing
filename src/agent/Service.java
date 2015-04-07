@@ -14,12 +14,6 @@ import java.util.concurrent.Semaphore;
 
 public class Service extends Observable implements Runnable {
 
-    Semaphore sem;
-
-    public Service(Semaphore s){
-        this.sem = s;
-    }
-
     private void join() throws Exception {
         DatagramSocket clientSocket = new DatagramSocket();
         Iterator it = Cache.neighbours.entrySet().iterator();
@@ -40,7 +34,7 @@ public class Service extends Observable implements Runnable {
         clientSocket.close();
     }
 
-    private String getJoinHash(String cmd) throws Exception{
+    private String getJoinHash(String cmd) throws Exception {
         String date = "" + ((new Date()).getTime());
         String hashMe = cmd + date + Cache.NODE_IP + Cache.NODE_PORT + Cache.NODE_USER;
         byte[] bytesOfMessage = hashMe.getBytes("UTF-8");
@@ -55,7 +49,7 @@ public class Service extends Observable implements Runnable {
         return hashBuf.toString();
     }
 
-    private void udpRegister() throws Exception{
+    private void udpRegister() throws Exception {
         DatagramSocket clientSocket = new DatagramSocket();
         String command = "REG " + Cache.NODE_IP + " " + Cache.NODE_PORT + " " + Cache.NODE_USER;
         String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
@@ -75,7 +69,7 @@ public class Service extends Observable implements Runnable {
 //        String response = inFromServer.readLine();
 //        clientSocket.close();
 
-        udpRegister();
+        udpRegister();      //using custom bootstrap server instead of TCP BS
 
 
     }
@@ -171,7 +165,7 @@ public class Service extends Observable implements Runnable {
                 String randomNeighbourIP = null;
                 int randomNeighbourPort = 0;
 
-                if (searchResponse.cachedLocations.size() < 2) {
+                if (searchResponse.cachedLocations != null) {
                     randomNeighbourIP = neighbourIPs.get(new Random(neighbourIPs.size()).nextInt());
                     randomNeighbourPort = Cache.neighbours.get(randomNeighbourIP);
                 } else {
@@ -179,7 +173,6 @@ public class Service extends Observable implements Runnable {
                 }
 
                 InetAddress nIPAddress = InetAddress.getByName(randomNeighbourIP);
-
                 byte[] sendData = new byte[1024];
                 String cmd = command + " " + sourceIP + " " + sourcePort + " " + fileName + " " + ttl + " " + hash;
 
@@ -192,14 +185,12 @@ public class Service extends Observable implements Runnable {
 
             } else if (searchResponse.filePaths != null) {
                 if (sourceIP.equals(Cache.NODE_IP)) {
-                    sem.acquire();
                     System.out.println("------------------------------------------");
                     System.out.println("Search results from my files: ");
                     for (int i = 0; i < searchResponse.filePaths.size(); i++) {
                         System.out.println((i + 1) + ". " + searchResponse.filePaths.get(i));
                     }
                     System.out.println("------------------------------------------");
-                    sem.release();
                 } else {
                     DatagramSocket clientSocket = new DatagramSocket();
                     InetAddress sourceIPAddress = InetAddress.getByName(sourceIP);
@@ -227,8 +218,7 @@ public class Service extends Observable implements Runnable {
         }
     }
 
-    public synchronized void printSearchOutput(String[] tokens) throws Exception{
-        this.sem.acquire();
+    public synchronized void printSearchOutput(String[] tokens) throws Exception {
         int respLength = Integer.parseInt(tokens[0]);
         if (respLength > 0) {
             //String respMsg = tokens[1];
@@ -252,7 +242,6 @@ public class Service extends Observable implements Runnable {
                 }
             }
         }
-        this.sem.release();
     }
 
     @Override
@@ -291,16 +280,16 @@ public class Service extends Observable implements Runnable {
                         printSearchOutput(tokens); // print the search results
                     } else if (command.equals("JOIN")) {
                         forwardJoinRequest(request);    //forward the join request to a random neighbour
-                    }
-                    else if(command.equals("JOINOK")){
-
-                    }
-                    else if(command.equals("REGOK")){
+                    } else if (command.equals("JOINOK")) {
+                        //TODO
+                    } else if (command.equals("REGOK")) {
+                        System.out.println("Test");
                         int resLength = Integer.parseInt(tokens[0]);
                         String resStatus = tokens[1];
                         if (resLength > 0 && resStatus.equals("REGOK")) {
                             int resCode = Integer.parseInt(tokens[2]);
                             boolean registrationSuccessful = false;
+                            //Cache.semService.acquire();
                             switch (resCode) {
                                 case 9999:
                                     System.out.println("Failed! There is some error in the command!");
@@ -340,6 +329,8 @@ public class Service extends Observable implements Runnable {
                             }
                             if (!registrationSuccessful) {
                                 System.exit(0);
+                            } else {
+                                System.out.println("Registration successful");
                             }
                         } else if (resLength == 0) {
                             System.out.println("Empty response from bootstrap server. Exiting ..");

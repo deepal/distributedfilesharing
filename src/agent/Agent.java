@@ -8,16 +8,9 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 
-public class Agent implements Runnable, Observer{
+public class Agent implements Runnable, Observer {
 
-    Semaphore sem;
-
-    public Agent(Semaphore s){
-        this.sem = s;
-    }
-
-    private void showMenu() throws Exception{
-        this.sem.acquire();
+    private void showMenu() throws Exception {
         Scanner sc = new Scanner(System.in);
         System.out.println("Actions - ");
         System.out.println("1. Issue a query");
@@ -27,9 +20,8 @@ public class Agent implements Runnable, Observer{
         System.out.println("6. Leave network\n");
         System.out.println("Select action: ");
         int option = sc.nextInt();
-        this.sem.release();
 
-        switch (option){
+        switch (option) {
             case 1:
                 System.out.println("File name to search : ");
                 String fileName = sc.next();
@@ -54,7 +46,7 @@ public class Agent implements Runnable, Observer{
         }
     }
 
-    private void addFile(String fileName){
+    private void addFile(String fileName) {
         String[] keywords = fileName.split(" ");
         fileName = fileName.replace(" ", "_");  //replace spaces with underscore
         HashSet<String> keyset = new HashSet<String>();
@@ -64,49 +56,47 @@ public class Agent implements Runnable, Observer{
         Cache.myFiles.put(fileName, keyset);
     }
 
-    private void listMyFiles(){
+    private void listMyFiles() {
         Iterator it = Cache.myFiles.entrySet().iterator();
-        if(it.hasNext()){
+        if (it.hasNext()) {
             System.out.println("\n-------------------My Files-------------------");
-            while(it.hasNext()){
-                Map.Entry<String, HashSet<String>> fileEntry = (Map.Entry<String, HashSet<String>>)it.next();
+            while (it.hasNext()) {
+                Map.Entry<String, HashSet<String>> fileEntry = (Map.Entry<String, HashSet<String>>) it.next();
                 System.out.println(fileEntry.getKey());
             }
             System.out.println("------------------------------------------------\n");
-        }
-        else{
+        } else {
             System.out.println("No files !");
         }
         (new Scanner(System.in)).nextLine();
     }
 
-    private void listNeighbours(){
+    private void listNeighbours() {
         Iterator it = Cache.neighbours.entrySet().iterator();
-        if(it.hasNext()){
+        if (it.hasNext()) {
             System.out.println("\n-------------------Neighbours-------------------");
-            while(it.hasNext()){
-                Map.Entry<String, Integer> neighbourEntry = (Map.Entry<String, Integer>)it.next();
+            while (it.hasNext()) {
+                Map.Entry<String, Integer> neighbourEntry = (Map.Entry<String, Integer>) it.next();
                 System.out.println(neighbourEntry.getKey());
             }
             System.out.println("------------------------------------------------\n");
-        }
-        else{
+        } else {
             System.out.println("No connections !");
         }
         (new Scanner(System.in)).nextLine();
     }
 
-    private void unregister(){
+    private void unregister() {
 
     }
 
-    public void leave(){
+    public void leave() {
         unregister();
     }
 
-    private String getNodeHash() throws Exception{
-        String date = ""+((new Date()).getTime());
-        String hashMe = date+Cache.NODE_IP+Cache.NODE_PORT+Cache.NODE_USER;
+    private String getNodeHash() throws Exception {
+        String date = "" + ((new Date()).getTime());
+        String hashMe = date + Cache.NODE_IP + Cache.NODE_PORT + Cache.NODE_USER;
         byte[] bytesOfMessage = hashMe.getBytes("UTF-8");
         MessageDigest md = MessageDigest.getInstance("MD5");
         byte[] thedigest = md.digest(bytesOfMessage);
@@ -119,33 +109,33 @@ public class Agent implements Runnable, Observer{
         return hashBuf.toString();
     }
 
-    public void searchFile(String fileName){
-        try{
+    public void searchFile(String fileName) {
+        try {
             fileName = fileName.replace(" ", "_");
             DatagramSocket clientSocket = new DatagramSocket();
             InetAddress nIPAddress = InetAddress.getByName(Cache.NODE_IP);
             String myHash = getNodeHash();
-            String command = "SER "+Cache.NODE_IP+" "+Cache.NODE_PORT+" "+fileName+" "+Cache.HOP_COUNT+" "+myHash;
-            String sendCommand = String.format("%04d", command.length()+5)+" "+command;
+            String command = "SER " + Cache.NODE_IP + " " + Cache.NODE_PORT + " " + fileName + " " + Cache.HOP_COUNT + " " + myHash;
+            String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
             byte[] sendData = new byte[1024];
             sendData = sendCommand.getBytes();
-            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress , Cache.NODE_PORT);
+            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress, Cache.NODE_PORT);
             clientSocket.send(sendPacket);
             Cache.queryCache.put(myHash, fileName);
             clientSocket.close();
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     @Override
     public void run() {
-        while(true){
-            try{
+        while (true) {
+            try {
+                //Cache.semAgent.acquire();
                 showMenu();
-            }
-            catch (Exception ex){
+                //Cache.semService.release();
+            } catch (Exception ex) {
                 ex.printStackTrace();
             }
         }
@@ -153,11 +143,12 @@ public class Agent implements Runnable, Observer{
 
     @Override
     public void update(Observable observable, Object o) {
-        while(true){
-            try{
+        while (true) {
+            try {
+                //Cache.semAgent.acquire();
                 showMenu();
-            }
-            catch (Exception ex){
+                //Cache.semService.release();
+            } catch (Exception ex) {
                 ex.printStackTrace();
             }
         }
