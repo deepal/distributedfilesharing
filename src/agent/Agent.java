@@ -121,7 +121,7 @@ public class Agent implements Runnable, Observer {
             sendData = sendCommand.getBytes();
             DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress, Cache.NODE_PORT);
             clientSocket.send(sendPacket);
-            Cache.queryCache.put(myHash, fileName);
+            System.out.println("Waiting for search results for file \"" + fileName + "\"...");
             clientSocket.close();
         } catch (Exception e) {
             e.printStackTrace();
@@ -130,27 +130,21 @@ public class Agent implements Runnable, Observer {
 
     @Override
     public void run() {
-        while (true) {
-            try {
-                //Cache.semAgent.acquire();
-                showMenu();
-                //Cache.semService.release();
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
+        try {
+            //Cache.semAgent.acquire();
+            showMenu();
+            //Cache.semService.release();
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
     }
 
     @Override
     public void update(Observable observable, Object o) {
-        while (true) {
-            try {
-                //Cache.semAgent.acquire();
-                showMenu();
-                //Cache.semService.release();
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
+        try {
+            showMenu();
+        } catch (Exception ex) {
+            ex.printStackTrace();
         }
     }
 }

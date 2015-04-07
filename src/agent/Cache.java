@@ -16,7 +16,7 @@ public class Cache {
     static int HOP_COUNT = 10;
     static String NODE_IP = "10.8.108.35";
     static int NODE_PORT = (new Random()).nextInt(65535-1024)+1024;
-    static String NODE_USER = "node_A";
+    static String NODE_USER = "deepal";
     static Semaphore semAgent;
     static Semaphore semService;
     static Semaphore semPrint;

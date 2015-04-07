@@ -51,11 +51,76 @@ public class Service extends Observable implements Runnable {
 
     private void udpRegister() throws Exception {
         DatagramSocket clientSocket = new DatagramSocket();
+        byte[] sendData = new byte[1024];
+        byte[] receiveData = new byte[1024];
         String command = "REG " + Cache.NODE_IP + " " + Cache.NODE_PORT + " " + Cache.NODE_USER;
         String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
-        byte[] sendData = sendCommand.getBytes();
+        sendData = sendCommand.getBytes();
         DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(Cache.BSIP), Cache.BSPORT);
         clientSocket.send(sendPacket);
+        DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+        clientSocket.receive(receivePacket);
+        String responseMsg = new String(receivePacket.getData());
+        String[] tokens = responseMsg.split(" ");
+
+        int resLength = Integer.parseInt(tokens[0]);
+        String newresponseMsg = responseMsg.substring(0, resLength);
+        tokens = newresponseMsg.split(" ");
+        String resStatus = tokens[1];
+        if (resLength > 0 && resStatus.equals("REGOK")) {
+            int resCode = Integer.parseInt(tokens[2]);
+            boolean registrationSuccessful = false;
+            //Cache.semService.acquire();
+            switch (resCode) {
+                case 9999:
+                    System.out.println("Failed! There is some error in the command!");
+                    System.exit(0);
+                    break;
+                case 9998:
+                    System.out.println("Failed! You are already registered. Unregister first.");
+                    System.exit(0);
+                    break;
+                case 9997:
+                    System.out.println("Failed! Another user registered with same IP/Port. Try a different IP/Port.");
+                    System.exit(0);
+                    break;
+                case 9996:
+                    System.out.println("Bootstrap server is full. Try later.");
+                    System.exit(0);
+                    break;
+                case 0:
+                    registrationSuccessful = true;
+                    break;
+                case 1:
+                    String neighbourIP = tokens[3];
+                    int neightbourPort = Integer.parseInt(tokens[4]);
+                    Cache.neighbours.put(neighbourIP, new Integer(neightbourPort));
+                    registrationSuccessful = true;
+                    break;
+                default:
+                    if (resCode > 1) {
+                        if (resCode > 1) {
+                            Cache.neighbours.put(tokens[3], Integer.parseInt(tokens[4]));
+                            Cache.neighbours.put(tokens[5], Integer.parseInt(tokens[6]));
+                            registrationSuccessful = true;
+                        }
+                    } else {
+                        System.out.println("Unknown response from bootstrap server !");
+                    }
+            }
+            if (!registrationSuccessful) {
+                System.exit(0);
+            } else {
+                System.out.println("Registration successful");
+            }
+        } else if (resLength == 0) {
+            System.out.println("Empty response from bootstrap server. Exiting ..");
+            System.exit(0);
+        } else {
+            System.out.println("Didn't get REGOK!");
+            System.exit(0);
+        }
+        clientSocket.close();
     }
 
     private void register() throws Exception {
@@ -110,32 +175,35 @@ public class Service extends Observable implements Runnable {
         String[] tokens = joinRequest.split(" ");
         int length = Integer.parseInt(tokens[0]);
         if (length > 0) {
-
-            ArrayList<String> neighbourIPs = (ArrayList<String>) Cache.neighbours.keySet();
-            String randomNeighbourIP = neighbourIPs.get(new Random(neighbourIPs.size()).nextInt());
-            int randomNeighbourPort = Cache.neighbours.get(randomNeighbourIP);
-            InetAddress nIPAddress = InetAddress.getByName(randomNeighbourIP);
-
             String cmd = tokens[1];
             String IPAddr = tokens[2];
             String port = tokens[3];
-            int ttl = Integer.parseInt(tokens[4]);
 
-            ttl--;
+            if (Cache.neighbours.size() > 0) {
+                ArrayList<String> neighbourIPs = new ArrayList<String>();
+                neighbourIPs.addAll(Cache.neighbours.keySet());
+                String randomNeighbourIP = neighbourIPs.get((new Random(neighbourIPs.size()).nextInt()) % neighbourIPs.size());
+                int randomNeighbourPort = Cache.neighbours.get(randomNeighbourIP);
+                InetAddress nIPAddress = InetAddress.getByName(randomNeighbourIP);
+                int ttl = Integer.parseInt(tokens[4]);
+                ttl--;
+
+                String command = cmd + " " + IPAddr + " " + port + " " + ttl;
+                String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
+
+                DatagramSocket clientSocket = new DatagramSocket();
+                byte[] sendData = new byte[1024];
+                sendData = sendCommand.getBytes();
+                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress, randomNeighbourPort);
+                clientSocket.send(sendPacket);
+                clientSocket.close();
+            }
 
             if (!Cache.neighbours.containsKey(IPAddr)) {
                 Cache.neighbours.put(IPAddr, new Integer(port));
             }
 
-            String command = cmd + " " + IPAddr + " " + port + " " + ttl;
-            String sendCommand = String.format("%04d", command.length() + 5) + " " + command;
 
-            DatagramSocket clientSocket = new DatagramSocket();
-            byte[] sendData = new byte[1024];
-            sendData = sendCommand.getBytes();
-            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress, randomNeighbourPort);
-            clientSocket.send(sendPacket);
-            clientSocket.close();
         }
 
 
@@ -153,68 +221,74 @@ public class Service extends Observable implements Runnable {
             int ttl = Integer.parseInt(tokens[5]);
             String hash = tokens[6];
 
-            FileSearchResponse searchResponse = searchFileLocally(fileName);
-
-            if ((searchResponse.filePaths == null) && (ttl > 1)) {
-                ttl -= 1;
-                DatagramSocket clientSocket = new DatagramSocket();
-
-                ArrayList<String> neighbourIPs = new ArrayList<String>();
-                neighbourIPs.addAll(Cache.neighbours.keySet());
-
-                String randomNeighbourIP = null;
-                int randomNeighbourPort = 0;
-
-                if (searchResponse.cachedLocations != null) {
-                    randomNeighbourIP = neighbourIPs.get(new Random(neighbourIPs.size()).nextInt());
-                    randomNeighbourPort = Cache.neighbours.get(randomNeighbourIP);
-                } else {
-                    //select random neighbours from cached locations. it would be effective
-                }
-
-                InetAddress nIPAddress = InetAddress.getByName(randomNeighbourIP);
-                byte[] sendData = new byte[1024];
-                String cmd = command + " " + sourceIP + " " + sourcePort + " " + fileName + " " + ttl + " " + hash;
-
-                String sendCommand = String.format("%04d", cmd.length() + 5) + " " + cmd;
-                sendData = sendCommand.getBytes();
-                DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress, randomNeighbourPort);
-                clientSocket.send(sendPacket);
-
-                clientSocket.close();
-
-            } else if (searchResponse.filePaths != null) {
-                if (sourceIP.equals(Cache.NODE_IP)) {
-                    System.out.println("------------------------------------------");
-                    System.out.println("Search results from my files: ");
-                    for (int i = 0; i < searchResponse.filePaths.size(); i++) {
-                        System.out.println((i + 1) + ". " + searchResponse.filePaths.get(i));
-                    }
-                    System.out.println("------------------------------------------");
-                } else {
-                    DatagramSocket clientSocket = new DatagramSocket();
-                    InetAddress sourceIPAddress = InetAddress.getByName(sourceIP);
-                    byte[] sendData = new byte[1024];
-                    int fileCount = searchResponse.filePaths.size();
-                    String cmd = "SEROK ";
-
-                    if (fileCount > 0) {
-
-                        cmd += fileCount + " " + Cache.NODE_IP + " " + Cache.NODE_PORT + " ";
-
-                        for (int i = 0; i < fileCount; i++) {
-                            cmd += searchResponse.filePaths.get(i);
+            if(!(Cache.queryCache.containsKey(hash))){
+                FileSearchResponse searchResponse = searchFileLocally(fileName);
+                if (searchResponse.filePaths != null) {
+                    if (sourceIP.equals(Cache.NODE_IP)) {
+                        for (int i = 0; i < searchResponse.filePaths.size(); i++) {
+                            System.out.println(searchResponse.filePaths.get(i) + " (local)");
                         }
+                    } else {
+                        DatagramSocket clientSocket = new DatagramSocket();
+                        InetAddress sourceIPAddress = InetAddress.getByName(sourceIP);
+                        byte[] sendData = new byte[1024];
+                        int fileCount = searchResponse.filePaths.size();
+                        String cmd = "SEROK ";
 
-                        cmd += " " + hash;
+                        if (fileCount > 0) {
 
-                        String sendCommand = String.format("%04d", cmd.length() + 5) + " " + cmd;
-                        sendData = sendCommand.getBytes();
-                        DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, sourceIPAddress, sourcePort);
-                        clientSocket.send(sendPacket);
+                            cmd += fileCount + " " + Cache.NODE_IP + " " + Cache.NODE_PORT + " ";
+
+                            for (int i = 0; i < fileCount; i++) {
+                                cmd += searchResponse.filePaths.get(i);
+                                if (i != fileCount - 1) {
+                                    cmd += " ";
+                                }
+                            }
+
+                            cmd += " " + hash;
+
+                            String sendCommand = String.format("%04d", cmd.length() + 5) + " " + cmd;
+                            sendData = sendCommand.getBytes();
+                            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, sourceIPAddress, sourcePort);
+                            clientSocket.send(sendPacket);
+                        }
                     }
                 }
+
+                if (ttl > 1) {
+                    ttl -= 1;
+                    DatagramSocket clientSocket = new DatagramSocket();
+
+                    ArrayList<String> neighbourIPs = new ArrayList<String>();
+                    neighbourIPs.addAll(Cache.neighbours.keySet());
+
+                    String randomNeighbourIP = null;
+                    int randomNeighbourPort = 0;
+
+                    if (searchResponse.cachedLocations == null) {
+                        randomNeighbourIP = neighbourIPs.get((new Random(neighbourIPs.size()).nextInt()) % neighbourIPs.size());
+                        randomNeighbourPort = Cache.neighbours.get(randomNeighbourIP);
+                    } else {
+                        //select random neighbours from cached locations. it would be effective
+                    }
+
+                    InetAddress nIPAddress = InetAddress.getByName(randomNeighbourIP);
+                    byte[] sendData = new byte[1024];
+                    String cmd = command + " " + sourceIP + " " + sourcePort + " " + fileName + " " + ttl + " " + hash;
+
+                    String sendCommand = String.format("%04d", cmd.length() + 5) + " " + cmd;
+                    sendData = sendCommand.getBytes();
+                    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, nIPAddress, randomNeighbourPort);
+                    clientSocket.send(sendPacket);
+
+                    clientSocket.close();
+
+                }
+
+                Cache.queryCache.put(hash, fileName);
             }
+
         }
     }
 
@@ -233,11 +307,10 @@ public class Service extends Observable implements Runnable {
             String searchFileName = Cache.queryCache.get(recvHash);
 
             if (searchFileName != null) {
-                System.out.println("Searched files for query: \"" + searchFileName + "\"");
-                System.out.println("From " + senderIP + " at port " + senderPort);
+                //System.out.println("From " + senderIP + " at port " + senderPort);
                 if (fileCount > 0) {
                     for (int i = 0; i < fileCount; i++) {
-                        System.out.println((i + 1) + ". " + tokens[tokenIndex + i]);
+                        System.out.println(tokens[tokenIndex + 1 + i] + " (" + senderIP + ":" + senderPort + ")");
                     }
                 }
             }
@@ -282,63 +355,6 @@ public class Service extends Observable implements Runnable {
                         forwardJoinRequest(request);    //forward the join request to a random neighbour
                     } else if (command.equals("JOINOK")) {
                         //TODO
-                    } else if (command.equals("REGOK")) {
-                        System.out.println("Test");
-                        int resLength = Integer.parseInt(tokens[0]);
-                        String resStatus = tokens[1];
-                        if (resLength > 0 && resStatus.equals("REGOK")) {
-                            int resCode = Integer.parseInt(tokens[2]);
-                            boolean registrationSuccessful = false;
-                            //Cache.semService.acquire();
-                            switch (resCode) {
-                                case 9999:
-                                    System.out.println("Failed! There is some error in the command!");
-                                    System.exit(0);
-                                    break;
-                                case 9998:
-                                    System.out.println("Failed! You are already registered. Unregister first.");
-                                    System.exit(0);
-                                    break;
-                                case 9997:
-                                    System.out.println("Failed! Another user registered with same IP/Port. Try a different IP/Port.");
-                                    System.exit(0);
-                                    break;
-                                case 9996:
-                                    System.out.println("Bootstrap server is full. Try later.");
-                                    System.exit(0);
-                                    break;
-                                case 0:
-                                    registrationSuccessful = true;
-                                    break;
-                                case 1:
-                                    String neighbourIP = tokens[3];
-                                    int neightbourPort = Integer.parseInt(tokens[4]);
-                                    Cache.neighbours.put(neighbourIP, new Integer(neightbourPort));
-                                    registrationSuccessful = true;
-                                    break;
-                                default:
-                                    if (resCode > 1) {
-                                        if (resCode > 1) {
-                                            Cache.neighbours.put(tokens[3], Integer.parseInt(tokens[4]));
-                                            Cache.neighbours.put(tokens[5], Integer.parseInt(tokens[6]));
-                                            registrationSuccessful = true;
-                                        }
-                                    } else {
-                                        System.out.println("Unknown response from bootstrap server !");
-                                    }
-                            }
-                            if (!registrationSuccessful) {
-                                System.exit(0);
-                            } else {
-                                System.out.println("Registration successful");
-                            }
-                        } else if (resLength == 0) {
-                            System.out.println("Empty response from bootstrap server. Exiting ..");
-                            System.exit(0);
-                        } else {
-                            System.out.println("Didn't get REGOK!");
-                            System.exit(0);
-                        }
                     }
                 }
 
